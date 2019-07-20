@@ -16,9 +16,9 @@ AudioConnection patchCord5(mixer, audioOutput); // connection from mixer to outp
 
 AudioControlSGTL5000 sgtl5000_1; // controller for the audio chip on the shield
 
-#define SDCARD_CS_PIN    10
-#define SDCARD_MOSI_PIN  7
-#define SDCARD_SCK_PIN   14
+#define SDCARD_CS_PIN 10
+#define SDCARD_MOSI_PIN 7
+#define SDCARD_SCK_PIN 14
 
 
 void setup ()
