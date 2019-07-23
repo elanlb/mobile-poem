@@ -27,23 +27,28 @@ AudioControlSGTL5000 sgtl5000_1; // controller for the audio chip on the shield
 #define DIALTONE "DIALTONE.WAV"
 
 const int DIAL_THRESHOLD = 310; // 1 volt
-const long DEBOUNCE_TIME = 10; // wait before counting the pulse
-const int MIN_PULSE_LENGTH = 20; // the minimum duration of a pulse
-const long DIAL_WAIT = 500; // wait 500 ms before confirming the number dialed
+const long DEBOUNCE_TIME = 20; // wait before counting the event
+const int MIN_PULSE_LENGTH = 40; // the minimum duration of a pulse
+const int MAX_PULSE_LENGTH = 100; // the maximum duration of a pulse
+const long DIAL_TIMEOUT = 300; // wait 500 ms before confirming the number dialed
+const long HANG_UP_TIME = 300; // time before confirming that the phone has been hung up
 
-bool riseCounted = 0; // has the pulse or spike been counted yet
+bool eventCounted = 0;
+bool signalUp = 0; // has the pulse or spike been counted yet
 bool fallCounted = 0;
+bool pulseCounted = 0;
 unsigned long riseTime = 0; // keep track of when the pulses happen
 unsigned long fallTime = 0;
 
-uint8_t phoneStatus = 0; // 0: hung up, 1: waiting for dial, 2: dialing, 3: ringing, 4: playing audio, 5: ringing bells
-uint8_t number = 10;
+uint8_t phoneState = 0; // 0: hung up, 1: waiting for dial, 2: dialing, 3: ringing, 4: playing audio, 5: ringing bells
+uint8_t number = 0;
 
 String currentSong = "";
 
 void setup ()
 {
     Serial.begin(9600);
+    pinMode(13, OUTPUT);
 
     AudioMemory(20); // allocate some memory for the audio processing
     sgtl5000_1.enable(); // enable the audio processing chip and set the volume
@@ -81,77 +86,92 @@ void stopPlaying ()
 
 void loop ()
 {
-    if (analogRead(AUDIO_INPUT) > DIAL_THRESHOLD && !riseCounted)
+    if (analogRead(AUDIO_INPUT) > DIAL_THRESHOLD && !eventCounted)
     {
-        riseTime = millis();
-        riseCounted = 1;
+        riseTime = millis(); // set the time where the rise occurred
+        eventCounted = 1;
     }
-    if (analogRead(AUDIO_INPUT) < DIAL_THRESHOLD && !fallCounted)
+    if (analogRead(AUDIO_INPUT) < DIAL_THRESHOLD && eventCounted)
     {
-        fallTime = millis();
-        fallCounted = 1;
+        fallTime = millis(); // set the time where the fall occurred
+        eventCounted = 0;
     }
-    if (millis() - riseTime > DEBOUNCE_TIME)
+    if (eventCounted && millis() - riseTime > DEBOUNCE_TIME)
     {
-        fallCounted = 0;
+        signalUp = 1; // confirm the debouncing
     }
-    if (millis() - fallTime > DEBOUNCE_TIME)
+    if (!eventCounted && millis() - fallTime > DEBOUNCE_TIME)
     {
-        riseCounted = 0;
+        signalUp = 0; // confirm the debouncing
     }
 
     // 0: hung up, 1: waiting for dial, 2: dialing, 3: ringing, 4: playing audio, 5: ringing bells
-    if (phoneStatus == 0) // hung up
+
+    if (signalUp && millis() - riseTime > HANG_UP_TIME)
+    {
+        phoneState = 0; // set the phone status to 0 if the signal was high for a certain time
+    }
+
+    if (phoneState == 0) // hung up
     {
         // play a dialtone so that we can detect if the phone is picked up
         playFile(DIALTONE);
 
-        if (analogRead(AUDIO_INPUT) < DIAL_THRESHOLD)
+        if (!signalUp)
         {
-            phoneStatus = 1; // phone has been picked up
-            riseCounted = 0;
-            fallCounted = 0;
+            phoneState = 1; // phone has been picked up
         }
     }
-    else if (phoneStatus == 1) // waiting for dial
+    else if (phoneState == 1) // waiting for dial
     {
         // play a dialtone until the first dialing is detected
         playFile(DIALTONE);
+        number = 0;
 
-        if (analogRead(AUDIO_INPUT) > DIAL_THRESHOLD && !riseCounted)
+        if (signalUp) // rising signal
         {
-            riseTime = millis();
-            riseCounted = 1;
-            fallCounted = 0;
-        }
-        if (riseCounted && millis() - riseTime > DEBOUNCE_TIME)
-        {
-            phoneStatus = 2;
+            phoneState = 2; // rise detected so switch to dialing state
         }
     }
-    else if (phoneStatus == 2) // dialing
+    else if (phoneState == 2) // dialing
     {
         // make the dialing logic
-        
-        if (!riseCounted && fallCounted)
+        if (signalUp) // rising signal
         {
-            if (fallTime - riseTime > MIN_PULSE_LENGTH)
+            pulseCounted = 0;
+        }
+        if (!pulseCounted && !signalUp) // falling signal
+        {            
+            // check that the pulse lasted the correct amount of time
+            if (fallTime - riseTime >= MIN_PULSE_LENGTH && fallTime - riseTime <= MAX_PULSE_LENGTH)
             {
+                pulseCounted = 1; // reset so that the message is not repeated
                 number++;
-                fallCounted = 0;
+            }
+        }
+
+        if (millis() - fallTime >= DIAL_TIMEOUT)
+        {
+            if (number != 0)
+            {
+                Serial.print("Number: ");
+                Serial.println(number);
+                phoneState = 3;
             }
         }
     }
-    else if (phoneStatus == 3) // ringing on other end
+    else if (phoneState == 3) // ringing on other end
     {
         // play a ringing sound for a specified amount of time
     }
-    else if (phoneStatus == 4) // playing sound
+    else if (phoneState == 4) // playing sound
     {
         // play the audio which corresponds to the number dialed
     }
-    else if (phoneStatus == 5) // ringing bells
+    else if (phoneState == 5) // ringing bells
     {
         // isolate the electronics and activate the ringer
     }
+
+    delay(5);
 }
