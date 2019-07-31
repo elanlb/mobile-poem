@@ -22,9 +22,10 @@ AudioControlSGTL5000 sgtl5000_1; // controller for the audio chip on the shield
 #define SDCARD_SCK_PIN 14
 
 #define AUDIO_INPUT 7 // pin A7/21
-#define OUTPUT_RELAY 2 // to isolate the electronics from 48v
+#define OUTPUT_RELAY_INVERTED 2 // to isolate the electronics from 48v
 #define RINGER_RELAY 3 // to activate the ringer
 #define RINGER_BUTTON 4 // to initiate the ringing
+#define OUTPUT_RELAY 5 // in case the relays are high-on
 
 const int DIAL_THRESHOLD = 310; // 1 volt
 const long DEBOUNCE_TIME = 20; // wait before counting the event
@@ -50,11 +51,13 @@ String currentSong = "";
 void setup ()
 {
     Serial.begin(9600);
-    pinMode(OUTPUT_RELAY, OUTPUT);
+    pinMode(OUTPUT_RELAY_INVERTED, OUTPUT);
     pinMode(RINGER_RELAY, OUTPUT);
-    pinMode(RINGER_BUTTON, INPUT_PULLUP);
-    digitalWrite(OUTPUT_RELAY, LOW);
+    pinMode(RINGER_BUTTON, INPUT);
+    pinMode(OUTPUT_RELAY, OUTPUT);
+    digitalWrite(OUTPUT_RELAY_INVERTED, HIGH);
     digitalWrite(RINGER_RELAY, LOW);
+    digitalWrite(OUTPUT_RELAY, LOW);
 
     AudioMemory(8); // allocate some memory for the audio processing
     sgtl5000_1.enable(); // enable the audio processing chip and set the volume
@@ -211,8 +214,9 @@ void loop ()
         }
     }
 
-    if (digitalRead(RINGER_BUTTON) == LOW)
+    if (digitalRead(RINGER_BUTTON) == HIGH)
     {
+        digitalWrite(OUTPUT_RELAY_INVERTED, LOW);
         digitalWrite(OUTPUT_RELAY, HIGH);
         if (ringTime == 0)
         {
@@ -233,6 +237,7 @@ void loop ()
         }
         if (millis() - ringTime >= RINGER_DELAY)
         {
+            digitalWrite(OUTPUT_RELAY_INVERTED, HIGH);
             digitalWrite(OUTPUT_RELAY, LOW);
             ringTime = 0;
         }
