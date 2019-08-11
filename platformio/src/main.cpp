@@ -7,13 +7,13 @@
 
 AudioPlaySdWav playWav1; // one player for the wav files
 //AudioPlaySdWav playWav2; // add as many players as needed
-AudioMixer4 mixer; // mixer to combine the outputs from multiple sources
+//AudioMixer4 mixer; // mixer to combine the outputs from multiple sources
 AudioOutputI2S audioOutput; // the audio output
 
-AudioConnection patchCord1(playWav1, 0, mixer, 0); // connection from player to mixer
+AudioConnection patchCord1(playWav1, 0, audioOutput, 0); // connection from player to mixer
 //AudioConnection patchCord2(playWav2, 0, mixer, 1); // add connections for the various players
-AudioConnection patchCord5(mixer, 0, audioOutput, 0); // connection from mixer to output
-AudioConnection patchCord6(mixer, 1, audioOutput, 0); // connection from mixer to output
+//AudioConnection patchCord5(mixer, 0, audioOutput, 0); // connection from mixer to output
+//AudioConnection patchCord6(mixer, 1, audioOutput, 0); // connection from mixer to output
 
 AudioControlSGTL5000 sgtl5000_1; // controller for the audio chip on the shield
 
@@ -32,7 +32,7 @@ const int MIN_PULSE_LENGTH = 40; // the minimum duration of a pulse
 const int MAX_PULSE_LENGTH = 100; // the maximum duration of a pulse
 const long DIAL_TIMEOUT = 300; // wait 500 ms before confirming the number dialed
 const long HANG_UP_TIME = 300; // time before confirming that the phone has been hung up
-const long RINGER_DELAY = 500; // wait a bit after isolating the electronics before ringing
+const long RINGER_DELAY = 200; // wait a bit after isolating the electronics before ringing
 
 bool eventCounted = 0;
 bool signalUp = 0; // has the pulse or spike been counted yet
@@ -42,6 +42,9 @@ unsigned long riseTime = 0; // keep track of when the pulses happen
 unsigned long fallTime = 0;
 unsigned long ringTime = 0; // time when the ring button is pressed
 
+bool ringing = false;
+unsigned long second = 0;
+
 uint8_t phoneState = 0; // 0: hung up, 1: waiting for dial, 2: dialing, 3: ringing, 4: playing audio, 5: ringing bells
 uint8_t number = 0;
 
@@ -50,16 +53,16 @@ String currentSong = "";
 void setup ()
 {
     Serial.begin(9600);
+    Serial.println("Starting...");
     pinMode(RINGER_RELAY, OUTPUT);
     pinMode(RINGER_BUTTON, INPUT);
     pinMode(OUTPUT_RELAY, OUTPUT);
     digitalWrite(RINGER_RELAY, LOW);
     digitalWrite(OUTPUT_RELAY, LOW);
 
-    AudioMemory(8); // allocate some memory for the audio processing
+    AudioMemory(100); // allocate some memory for the audio processing
     sgtl5000_1.enable(); // enable the audio processing chip and set the volume
     sgtl5000_1.volume(1);
-    mixer.gain(0, 1); // set mixer to maximum volume
     SPI.setMOSI(SDCARD_MOSI_PIN); // enable the SD card communication interface
     SPI.setSCK(SDCARD_SCK_PIN);
     if (!(SD.begin(SDCARD_CS_PIN)))
@@ -74,6 +77,7 @@ void playFile (const char *filename)
     {
         playWav1.play(filename);
         currentSong = (String) filename;
+        Serial.println("Playing "  + currentSong);
     }
 }
 
@@ -92,6 +96,10 @@ void stopPlaying ()
 
 void loop ()
 {
+    if (millis() / 1000 > second) {
+        second = millis() / 1000;
+        Serial.println(second);
+    }
     if (analogRead(AUDIO_INPUT) > DIAL_THRESHOLD && !eventCounted) // signal rised
     {
         riseTime = millis(); // set the time where the rise occurred
@@ -124,6 +132,7 @@ void loop ()
 
         if (!signalUp) // signal drops when phone is picked up
         {
+            Serial.println("Phone has been picked up");
             phoneState = 1; // phone has been picked up
         }
     }
@@ -134,6 +143,7 @@ void loop ()
 
         if (signalUp) // rising signal
         {
+            Serial.println("Dialing Started");
             stopPlaying(); // stop the dialtone as soon as the first pulse is detected
             phoneState = 2; // rise detected so switch to dialing state
         }
@@ -166,12 +176,21 @@ void loop ()
     }
     else if (phoneState == 3) // ringing on other end
     {
-        for (int i = 0; i < 1; i++) // ring a set number of times
-        {
-            playFileAndWait("RINGING.WAV"); // play a ringing sound
+        int selection = random(1, 10);
+        int mess = random(1, 4);
+        switch (selection) {
+            case 10:
+                number = 10 + mess;
+                phoneState = 4;
+            default:
+                int rings = random(1, 3);
+                for (int i = 0; i < rings; i++) 
+                {
+                    playFileAndWait("RINGING.WAV"); 
+                }
+                phoneState = 4; 
         }
-
-        phoneState = 4; // play the audio
+        Serial.println("Play audio");
     }
     else if (phoneState == 4) // playing sound
     {
@@ -208,36 +227,42 @@ void loop ()
         case 10:
             playFile("TRACK10.WAV");
             break;
+        case 11:
+            playFile("SLOW_BUSY.WAV");
+            break;
+        case 12:
+            playFile("FAST_BUSY.WAV");
+            break;
+        case 13: 
+            playFile("MODEM.WAV");
+            break;
+        case 14:
+            playFile("SLOW_BUSY.WAV");
+            break;
         }
     }
 
-    if (digitalRead(RINGER_BUTTON) == HIGH)
+    if (digitalRead(RINGER_BUTTON) == HIGH && !ringing)
     {
+        ringing = true;
+        Serial.println("Output relay on");
         digitalWrite(OUTPUT_RELAY, HIGH);
-        if (ringTime == 0)
-        {
-            ringTime = millis();
-        }
-        if (millis() - ringTime >= RINGER_DELAY)
-        {
-            digitalWrite(RINGER_RELAY, HIGH);
-            ringTime = 0;
-        }
+        ringTime = millis();
+        while (millis() - ringTime < RINGER_DELAY) {}
+        Serial.println("Ringer relay on");
+        digitalWrite(RINGER_RELAY, HIGH);
     }
-    else
+    else if (ringing && digitalRead(RINGER_BUTTON) == LOW)
     {
+        ringing = false;
+        Serial.println("Output relay off");
         digitalWrite(RINGER_RELAY, LOW);
-        if (ringTime == 0)
-        {
-            ringTime = millis();
-        }
-        if (millis() - ringTime >= RINGER_DELAY)
-        {
-            digitalWrite(OUTPUT_RELAY, LOW);
-            ringTime = 0;
-        }
-    }
-    
+        ringTime = millis();
+        while (millis() - ringTime < RINGER_DELAY) {}
+        Serial.println("Ringer relay off");
+        digitalWrite(OUTPUT_RELAY, LOW);
+        ringTime = 0;
+    }    
 
     delay(5);
 }

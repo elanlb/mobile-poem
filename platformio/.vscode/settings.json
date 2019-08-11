@@ -1,6 +1,6 @@
 {
     "terminal.integrated.env.osx": {
-        "PATH": "/Users/elan/.platformio/penv/bin:/Users/elan/.platformio/penv:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "PATH": "/Users/mauricio/.platformio/penv/bin:/Users/mauricio/.platformio/penv:/anaconda3/bin:/Users/mauricio/Documents/development/git/fastText:/Users/mauricio/anaconda3/bin:/opt/local/bin:/opt/local/sbin:/opt/local/bin:/opt/local/sbin:/opt/local/bin:/opt/local/sbin:/usr/local/Cellar/imagemagick/6.9.2-4/bin:/usr/local/Cellar/tesseract/3.04.00/bin:/usr/local/mysql/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/share/dotnet:/opt/X11/bin:~/.dotnet/tools:/Library/Frameworks/Mono.framework/Versions/Current/Commands:/Applications/Xamarin Workbooks.app/Contents/SharedSupport/path-bin:/Applications/MacPorts/Eiffel_14.05/studio/spec/macosx-x86-64/bin:/Users/mauricio/.platformio/penv/bin",
         "PLATFORMIO_CALLER": "vscode"
     }
 }
