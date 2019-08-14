@@ -44,11 +44,14 @@ unsigned long ringTime = 0; // time when the ring button is pressed
 
 bool ringing = false;
 unsigned long second = 0;
+unsigned long pickupTime = 0;
 
 uint8_t phoneState = 0; // 0: hung up, 1: waiting for dial, 2: dialing, 3: ringing, 4: playing audio, 5: ringing bells
 uint8_t number = 0;
 
 String currentSong = "";
+
+void setSignalUpAndPhoneState();
 
 void setup ()
 {
@@ -85,8 +88,13 @@ void playFileAndWait (const char *filename)
 {
     playWav1.play(filename);
     delay(5);
-    while (playWav1.isPlaying())
-    {}
+    while (playWav1.isPlaying()) {
+        setSignalUpAndPhoneState();
+        if (phoneState == 0) {
+            Serial.println("Phone hung up while ringing");
+            break;
+        }
+    }
 }
 
 void stopPlaying ()
@@ -94,12 +102,7 @@ void stopPlaying ()
     playWav1.stop();
 }
 
-void loop ()
-{
-    if (millis() / 1000 > second) {
-        second = millis() / 1000;
-        Serial.println(second);
-    }
+void setSignalUpAndPhoneState() {
     if (analogRead(AUDIO_INPUT) > DIAL_THRESHOLD && !eventCounted) // signal rised
     {
         riseTime = millis(); // set the time where the rise occurred
@@ -118,13 +121,22 @@ void loop ()
     {
         signalUp = 0; // confirm the debouncing
     }
-
-    // 0: hung up, 1: waiting for dial, 2: dialing, 3: ringing, 4: playing audio
-
     if (signalUp && millis() - riseTime > HANG_UP_TIME) // signal high shows phone is up
     {
         phoneState = 0; // set the phone status to 0 if the signal was high for a certain time
+        playFile("DIALTONE.WAV"); // play a dialtone so that we can detect if the phone is picked up
+   }
+}
+
+void loop ()
+{
+    if (millis() / 1000 > second) {
+        second = millis() / 1000;
+        Serial.println(second);
     }
+    setSignalUpAndPhoneState();
+
+    // 0: hung up, 1: waiting for dial, 2: dialing, 3: ringing, 4: playing audio
 
     if (phoneState == 0) // hung up
     {
@@ -134,6 +146,7 @@ void loop ()
         {
             Serial.println("Phone has been picked up");
             phoneState = 1; // phone has been picked up
+            pickupTime = millis();
         }
     }
     else if (phoneState == 1) // waiting for dial
@@ -141,11 +154,13 @@ void loop ()
         playFile("DIALTONE.WAV"); // play a dialtone until the first dialing is detected
         number = 0; // reset the number on a new call
 
-        if (signalUp) // rising signal
-        {
-            Serial.println("Dialing Started");
-            stopPlaying(); // stop the dialtone as soon as the first pulse is detected
-            phoneState = 2; // rise detected so switch to dialing state
+        if (millis() - pickupTime > 500) {
+            if (signalUp) // rising signal
+            {
+                Serial.println("Dialing Started");
+                stopPlaying(); // stop the dialtone as soon as the first pulse is detected
+                phoneState = 2; // rise detected so switch to dialing state
+            }
         }
     }
     else if (phoneState == 2) // dialing
@@ -176,21 +191,20 @@ void loop ()
     }
     else if (phoneState == 3) // ringing on other end
     {
-        int selection = random(1, 10);
-        int mess = random(1, 4);
+        int selection = random(1, 4);
+        int mess = random(1, 5);
         switch (selection) {
-            case 10:
+            case 3:
                 number = 10 + mess;
                 phoneState = 4;
+                break;
             default:
-                int rings = random(1, 3);
-                for (int i = 0; i < rings; i++) 
-                {
+                int rings = random(1, 4);
+                for (int i = 0; i < rings; i++) {
                     playFileAndWait("RINGING.WAV"); 
                 }
-                phoneState = 4; 
+                if (phoneState != 0) phoneState = 4; 
         }
-        Serial.println("Play audio");
     }
     else if (phoneState == 4) // playing sound
     {
@@ -228,16 +242,16 @@ void loop ()
             playFile("TRACK10.WAV");
             break;
         case 11:
-            playFile("SLOW_BUSY.WAV");
+            playFile("SLOWBUSY.WAV");
             break;
         case 12:
-            playFile("FAST_BUSY.WAV");
+            playFile("FASTBUSY.WAV");
             break;
         case 13: 
             playFile("MODEM.WAV");
             break;
         case 14:
-            playFile("SLOW_BUSY.WAV");
+            playFile("HOLD.WAV");
             break;
         }
     }
